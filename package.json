@@ -1,0 +1,13 @@
+{
+  "name": "we-just-met",
+  "private": true,
+  "workspaces": ["shared", "api", "web"],
+  "scripts": {
+    "dev": "concurrently -n api,web \"npm:dev -w api\" \"npm:dev -w web\"",
+    "build": "npm run build -w web",
+    "start": "npm run start -w api",
+    "typecheck": "npm run typecheck -w api && npm run typecheck -w web",
+    "test": "npm run test -w api"
+  },
+  "devDependencies": { "concurrently": "^9.0.1", "typescript": "^5.6.3" }
+}
