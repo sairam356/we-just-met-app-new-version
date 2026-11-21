@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import type { ProfilePatch, User } from "@wjm/shared";
+import type { CardDesign, ProfilePatch, User } from "@wjm/shared";
+import { api } from "../api/client";
+import { drawCard } from "../lib/aiCard";
 import { uploadImage, useUpdateMe } from "../api/hooks";
 import { ImagePicker } from "./ImagePicker";
 import { ErrorText } from "./Layout";
@@ -17,6 +19,16 @@ const fields: { k: keyof ProfilePatch; label: string; placeholder?: string; type
 
 export function ProfileForm({ me, submitLabel, onSaved }: { me: User; submitLabel: string; onSaved?: () => void }) {
   const update = useUpdateMe();
+  const [designing, setDesigning] = useState(false);
+  const [aiError, setAiError] = useState<unknown>(null);
+  const designWithAi = async () => {
+    setDesigning(true); setAiError(null);
+    try {
+      const design = await api<CardDesign>("/me/card-design", { method: "POST" });
+      const { key } = await uploadImage("business_card", await drawCard(design, me));
+      await update.mutateAsync({ businessCardKey: key });
+    } catch (e) { setAiError(e); } finally { setDesigning(false); }
+  };
   const [form, setForm] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   useEffect(() => {
@@ -55,6 +67,11 @@ export function ProfileForm({ me, submitLabel, onSaved }: { me: User; submitLabe
           <ImagePicker label={me.businessCardUrl ? "Replace card" : "Add your business card"} onPicked={async (b) => { const { key } = await uploadImage("business_card", b); await update.mutateAsync({ businessCardKey: key }); }} />
           {me.businessCardUrl && <button type="button" className="btn-secondary" onClick={() => update.mutate({ businessCardKey: null })}>Remove</button>}
         </div>
+        <button type="button" className="btn-secondary mt-2 w-full" disabled={designing || !me.name} onClick={designWithAi} data-testid="ai-card">
+          {designing ? "Designing…" : me.businessCardUrl ? "Design a new card with AI" : "Design my card with AI"}
+        </button>
+        <p className="mt-1 text-xs text-slate-500">Uses your saved profile. Save changes first.</p>
+        <ErrorText error={aiError} />
       </div>
       <ErrorText error={update.error} />
       {saved && !update.error && <p className="text-sm text-green-700">Saved</p>}

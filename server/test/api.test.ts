@@ -20,7 +20,9 @@ async function signIn(email: string, name: string) {
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), "wjm-"));
-  app = await buildApp({ db: process.env.TEST_DATABASE_URL ?? join(dir, "t.sqlite"), appUrl: "http://app", sessionSecret: "x".repeat(32), showDevLink: true });
+  app = await buildApp({ db: process.env.TEST_DATABASE_URL ?? join(dir, "t.sqlite"), appUrl: "http://app", sessionSecret: "x".repeat(32), showDevLink: true,
+    geocode: async () => "Detected Place",
+    designCard: async () => ({ layout: "left", background: "#111111", background2: "#222222", text: "#ffffff", accent: "#ffcc00", font: "sans", tagline: "Hi" }) });
 });
 afterAll(() => app.close());
 
@@ -94,5 +96,17 @@ describe("flows", () => {
 
   it("requires auth", async () => {
     expect((await app.inject({ url: "/api/v1/connections" })).statusCode).toBe(401);
+  });
+
+  it("fills the place from GPS when the event has none, and designs a card", async () => {
+    const a = await signIn("geo-a@x.com", "Gina");
+    const b = await signIn("geo-b@x.com", "Hari");
+    const tok = (await app.inject({ method: "POST", url: "/api/v1/exchange/token", headers: a, payload: {} })).json();
+    const r = (await app.inject({ method: "POST", url: "/api/v1/exchange/redeem", headers: b, payload: { token: tok.token, lat: 25.2, lng: 55.3 } })).json();
+    expect(r.placeLabel).toBe("Detected Place");
+    const st = (await app.inject({ url: `/api/v1/exchange/token/${tok.token}/status`, headers: a })).json();
+    expect((await app.inject({ url: `/api/v1/connections/${st.connectionId}`, headers: a })).json().placeLabel).toBe("Detected Place");
+    expect((await app.inject({ url: "/api/v1/geo/reverse?lat=25.2&lng=55.3", headers: a })).json().placeLabel).toBe("Detected Place");
+    expect((await app.inject({ method: "POST", url: "/api/v1/me/card-design", headers: a })).json().accent).toBe("#ffcc00");
   });
 });

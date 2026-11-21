@@ -73,3 +73,10 @@ export type Connection = {
 };
 export type ConnectionList = { items: Connection[]; nextCursor: string | null };
 export type ApiError = { error: { code: string; message: string } };
+
+const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+export const CardDesign = z.object({
+  layout: z.enum(["left", "center", "split"]), background: Hex, background2: Hex, text: Hex, accent: Hex,
+  font: z.enum(["sans", "serif", "mono"]), tagline: z.string().max(80),
+});
+export type CardDesign = z.infer<typeof CardDesign>;

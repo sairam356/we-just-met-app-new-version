@@ -32,7 +32,7 @@ Tests: `npm test`.
 | Full plan | POC |
 |---|---|
 | Postgres + Prisma | SQLite (`node:sqlite`), file at `server/data/wjm.sqlite` |
-| Redis (exchange tokens, rate limits) | In-memory TTL store; no rate limits |
+| Redis (exchange tokens, rate limits) | Exchange tokens in a database table; no rate limits |
 | S3/R2 presigned uploads | Images stored in the database, served only to signed-in users |
 | Resend / Mailpit email | Magic link shown on screen |
 | BullMQ reminder worker | Not included |
@@ -51,6 +51,11 @@ Tests: `npm test`.
 
 One Vercel project: `web/` builds to `web/dist`, and `api/index.js` is a single Vercel Function that serves `/api/*` from the Fastify app bundled by `npm run build:vercel`.
 
-Set `DATABASE_URL` (Postgres, for example Neon) and `SESSION_SECRET`. With a `postgres://` URL the app uses Postgres for data, QR tokens and images; without it, it uses the local SQLite file. Tables are created on first start.
+Set `DATABASE_URL` (Postgres, for example Neon). `SESSION_SECRET` is optional; without it the session key is derived from the database URL. With a `postgres://` URL the app uses Postgres for data, QR tokens and images; without it, it uses the local SQLite file. Tables are created on first start.
 
 Run the tests against Postgres with `TEST_DATABASE_URL=postgres://... npm test`.
+
+## Automatic place and AI business card
+
+- **Place:** when a QR is scanned with location allowed and the event has no place, the server names the spot with OpenStreetMap Nominatim and saves it for both people. "Detect" in the new-event form does the same lookup.
+- **AI card:** "Design my card with AI" on the profile asks Claude for a design (colours, layout, tagline); the browser draws the card from the profile text and saves it as the business card image. Needs `ANTHROPIC_API_KEY`; `ANTHROPIC_MODEL` is optional.

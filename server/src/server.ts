@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { buildApp } from "./app.js";
+import { anthropicDesigner } from "./ai-card.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Installs made before the folder was renamed keep their data in api/data.
@@ -21,5 +22,6 @@ const app = await buildApp({
   webDist: process.env.WEB_DIST ?? join(root, "..", "web", "dist"),
   showDevLink: process.env.SHOW_DEV_LINK !== "false",
   logger: true,
+  designCard: process.env.ANTHROPIC_API_KEY ? anthropicDesigner(process.env.ANTHROPIC_API_KEY, process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5") : undefined,
 });
 await app.listen({ port, host: "0.0.0.0" });

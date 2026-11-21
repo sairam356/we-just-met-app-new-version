@@ -11,9 +11,11 @@ import {
   normalizeInstagram, normalizeLinkedin, type Connection, type User,
 } from "@wjm/shared";
 import { DB, now, openDb } from "./db.js";
+import { nominatimReverse, type Geocode } from "./geocode.js";
+import type { DesignCard } from "./ai-card.js";
 
 /** `db` is a postgres:// URL or a SQLite file path. `appUrl` defaults to the origin of each request. `uploadsDir` only reads images saved by older versions. */
-export type AppOptions = { db: string; uploadsDir?: string; appUrl?: string; sessionSecret: string; webDist?: string; showDevLink?: boolean; logger?: boolean };
+export type AppOptions = { db: string; uploadsDir?: string; appUrl?: string; sessionSecret: string; webDist?: string; showDevLink?: boolean; logger?: boolean; geocode?: Geocode; designCard?: DesignCard };
 
 type XchgValue = { userId: string; eventId?: string; eventName?: string; placeLabel?: string | null; startsOn?: string | null };
 
@@ -26,6 +28,7 @@ const KEY_RE = /^u\/[0-9a-f-]{36}\/(?:avatar|card|c\/[0-9a-f-]{36})\/[0-9a-f-]{3
 
 export async function buildApp(opts: AppOptions) {
   const db: DB = await openDb(opts.db);
+  const geocode = opts.geocode ?? nominatimReverse;
   const secret = new TextEncoder().encode(opts.sessionSecret);
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 4 * 1024 * 1024 });
   await app.register(cookie);
@@ -154,6 +157,25 @@ export async function buildApp(opts: AppOptions) {
     return { ok: true };
   });
 
+  // ---- AI business card: the model picks the design, the web app draws it ----
+  app.post(`${P}/me/card-design`, async (req) => {
+    const u = toUser((await userRow(await requireUser(req)))!);
+    if (!opts.designCard) throw new HttpError(503, "ai_unavailable", "AI card design is not set up on this server");
+    if (!u.name) throw new HttpError(422, "name_required", "Add your name first");
+    try {
+      return await opts.designCard({ name: u.name, headline: u.headline, company: u.company, jobTitle: u.jobTitle, website: u.website });
+    } catch (e) {
+      app.log.error(e);
+      throw new HttpError(502, "ai_failed", "The AI could not design a card just now. Please try again.");
+    }
+  });
+
+  app.get(`${P}/geo/reverse`, async (req) => {
+    await requireUser(req);
+    const q = z.object({ lat: z.coerce.number().min(-90).max(90), lng: z.coerce.number().min(-180).max(180) }).parse(req.query);
+    return { placeLabel: await geocode(q.lat, q.lng) };
+  });
+
   // ---- uploads (POC: stored in the database instead of S3) ----
   app.post(`${P}/uploads`, async (req) => {
     const uid = await requireUser(req);
@@ -228,6 +250,8 @@ export async function buildApp(opts: AppOptions) {
     const t = JSON.parse(tokenRow.value) as XchgValue;
     if (t.userId === scanner) throw new HttpError(400, "self_exchange", "You can't exchange cards with yourself");
     const owner = t.userId;
+    // No place typed for the event: name it from the scanner's GPS position, for both people.
+    const detected = b.lat != null && b.lng != null && !t.placeLabel ? await geocode(b.lat, b.lng) : null;
 
     const { scannerConn, scannerEvent } = await db.tx(async (db) => {
       // Claiming the token first makes it single use, even if two people scan at once.
@@ -259,8 +283,8 @@ export async function buildApp(opts: AppOptions) {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, ownerId, contactId, eventId, ts, b.lat ?? null, b.lng ?? null, place, ts, ts);
         return id;
       };
-      const ownerConn = await upsert(owner, scanner, t.eventId ?? null, t.placeLabel ?? null);
-      const scannerConn = await upsert(scanner, owner, scannerEvent?.id ?? null, scannerEvent?.place_label ?? null);
+      const ownerConn = await upsert(owner, scanner, t.eventId ?? null, t.placeLabel ?? detected);
+      const scannerConn = await upsert(scanner, owner, scannerEvent?.id ?? null, scannerEvent?.place_label ?? detected);
       await db.run("UPDATE exchange_tokens SET connection_id = ?, expires_at = ? WHERE token = ?", ownerConn, new Date(Date.now() + 600_000).toISOString(), b.token);
       return { scannerConn, scannerEvent };
     });
