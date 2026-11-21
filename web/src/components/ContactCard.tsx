@@ -4,7 +4,6 @@ import { SocialButtons } from "./SocialButtons";
 
 type Props = {
   contact: Contact;
-  photoUrl?: string | null;
   eventName?: string | null;
   placeLabel?: string | null;
   metAt?: string | null;
@@ -20,7 +19,7 @@ export const ContactCard = forwardRef<HTMLDivElement, Props>(function ContactCar
   const [flipped, setFlipped] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const c = p.contact;
-  const img = p.photoUrl || c.avatarUrl;
+  const img = c.avatarUrl;
   const footer = [p.eventName && `Met at ${p.eventName}`, p.placeLabel, p.metAt && new Date(p.metAt).toLocaleDateString()].filter(Boolean).join(" · ");
   const full = p.size === "full";
 

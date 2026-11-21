@@ -67,14 +67,22 @@ export default function ConnectionDetail() {
   return (
     <div className="space-y-4">
       <Link to="/" className="text-sm text-indigo-600">← Contacts</Link>
-      {isNew && <div className="rounded-lg bg-green-50 p-3 text-sm text-green-800">You just met {c.contact.name || "someone"}! {c.photoUrl ? "Your photo together is on both of your cards." : "Add a photo and a note so you remember them."}</div>}
-      <ContactCard ref={cardRef} contact={c.contact} photoUrl={c.photoUrl} eventName={c.eventName} placeLabel={c.placeLabel} metAt={c.metAt} connectionId={c.id} linkedinClickedAt={c.linkedinClickedAt} instagramClickedAt={c.instagramClickedAt} size="full" />
+      {isNew && <div className="rounded-lg bg-green-50 p-3 text-sm text-green-800">You just met {c.contact.name || "someone"}! {c.photoUrl ? "Your memory photo is saved below, on both of your cards." : "Add a memory photo and a note so you remember them."}</div>}
+      <ContactCard ref={cardRef} contact={c.contact} eventName={c.eventName} placeLabel={c.placeLabel} metAt={c.metAt} connectionId={c.id} linkedinClickedAt={c.linkedinClickedAt} instagramClickedAt={c.instagramClickedAt} size="full" />
       <div className="grid grid-cols-2 gap-2">
-        <ImagePicker label={c.photoUrl ? "Replace photo" : "📷 Add photo"} capture="user" testId="photo-input" className="btn-primary" onPicked={savePhoto} />
+        <ImagePicker label={c.photoUrl ? "Replace memory photo" : "📷 Add memory photo"} capture="user" testId="photo-input" className="btn-primary" onPicked={savePhoto} />
         <button className="btn-secondary" onClick={() => downloadVCard(c.contact, c.note)}>Save to contacts</button>
         <button className="btn-secondary col-span-2" onClick={saveCardImage}>Save card as image</button>
-        {c.photoUrl && <button className="col-span-2 text-sm text-slate-500" onClick={() => update.mutate({ photoKey: null })} data-testid="remove-photo">Remove photo from my card</button>}
+        {c.photoUrl && <button className="col-span-2 text-sm text-slate-500" onClick={() => update.mutate({ photoKey: null })} data-testid="remove-photo">Remove memory photo from my card</button>}
       </div>
+
+      {c.photoUrl && (
+        <div className="card space-y-2" data-testid="memory-photo">
+          <div className="label">Memory photo</div>
+          <img src={c.photoUrl} alt={`Memory with ${c.contact.name}`} className="w-full rounded-xl object-cover" style={{ maxHeight: 360 }} />
+          <p className="text-xs text-slate-500">{[c.eventName, c.placeLabel, new Date(c.metAt).toLocaleDateString()].filter(Boolean).join(" · ")}</p>
+        </div>
+      )}
 
       <form className="card space-y-3" onSubmit={async (e) => { e.preventDefault(); setSaved(false); await update.mutateAsync({ note, placeLabel: place }); setSaved(true); }}>
         <div>

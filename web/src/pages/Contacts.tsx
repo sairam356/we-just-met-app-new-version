@@ -54,14 +54,14 @@ export default function Contacts() {
         <div className="space-y-3">
           {items.map((c) => (
             <Link key={c.id} to={`/c/${c.id}`} className="block">
-              <ContactCard contact={c.contact} photoUrl={c.photoUrl} eventName={c.eventName} placeLabel={c.placeLabel} metAt={c.metAt} connectionId={c.id} linkedinClickedAt={c.linkedinClickedAt} instagramClickedAt={c.instagramClickedAt} />
+              <ContactCard contact={c.contact} eventName={c.eventName} placeLabel={c.placeLabel} metAt={c.metAt} connectionId={c.id} linkedinClickedAt={c.linkedinClickedAt} instagramClickedAt={c.instagramClickedAt} />
             </Link>
           ))}
         </div>
       ) : (
         <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white shadow-sm">
           {items.map((c) => {
-            const img = c.photoUrl || c.contact.avatarUrl;
+            const img = c.contact.avatarUrl;
             return (
               <li key={c.id}>
                 <Link to={`/c/${c.id}`} className="flex items-center gap-3 p-3 hover:bg-slate-50" data-testid="contact-row">
@@ -73,6 +73,7 @@ export default function Contacts() {
                     <div className="truncate text-xs text-slate-600">{[c.contact.headline || c.contact.jobTitle, c.contact.company].filter(Boolean).join(" · ")}</div>
                     <div className="truncate text-[11px] text-slate-500">{[c.eventName, new Date(c.metAt).toLocaleDateString()].filter(Boolean).join(" · ")}</div>
                   </div>
+                  {c.photoUrl && <img src={c.photoUrl} alt="Memory photo" loading="lazy" className="h-12 w-12 shrink-0 rounded-lg object-cover" data-testid="memory-thumb" />}
                 </Link>
               </li>
             );
