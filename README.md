@@ -31,9 +31,9 @@ Tests: `npm test`.
 
 | Full plan | POC |
 |---|---|
-| Postgres + Prisma | SQLite (`node:sqlite`), file at `api/data/wjm.sqlite` |
+| Postgres + Prisma | SQLite (`node:sqlite`), file at `server/data/wjm.sqlite` |
 | Redis (exchange tokens, rate limits) | In-memory TTL store; no rate limits |
-| S3/R2 presigned uploads | Images saved to `api/data/uploads`, served only to signed-in users |
+| S3/R2 presigned uploads | Images stored in the database, served only to signed-in users |
 | Resend / Mailpit email | Magic link shown on screen |
 | BullMQ reminder worker | Not included |
 | LinkedIn OIDC sign-in | Not included |
@@ -43,6 +43,14 @@ Tests: `npm test`.
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `4000` | Server port |
-| `DATA_DIR` | `api/data` | SQLite DB, uploads, generated session secret |
+| `DATA_DIR` | `server/data` | SQLite DB, uploads, generated session secret |
 | `SESSION_SECRET` | auto-generated | JWT signing secret |
 | `SHOW_DEV_LINK` | `true` | Show the magic link on screen |
+
+## Deploy (Vercel)
+
+One Vercel project: `web/` builds to `web/dist`, and `api/index.js` is a single Vercel Function that serves `/api/*` from the Fastify app bundled by `npm run build:vercel`.
+
+Set `DATABASE_URL` (Postgres, for example Neon) and `SESSION_SECRET`. With a `postgres://` URL the app uses Postgres for data, QR tokens and images; without it, it uses the local SQLite file. Tables are created on first start.
+
+Run the tests against Postgres with `TEST_DATABASE_URL=postgres://... npm test`.

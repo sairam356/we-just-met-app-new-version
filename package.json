@@ -1,13 +1,24 @@
 {
   "name": "we-just-met",
   "private": true,
-  "workspaces": ["shared", "api", "web"],
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
   "scripts": {
-    "dev": "concurrently -n api,web \"npm:dev -w api\" \"npm:dev -w web\"",
+    "dev": "concurrently -n api,web \"npm:dev -w server\" \"npm:dev -w web\"",
     "build": "npm run build -w web",
-    "start": "npm run start -w api",
-    "typecheck": "npm run typecheck -w api && npm run typecheck -w web",
-    "test": "npm run test -w api"
+    "start": "npm run start -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
+    "test": "npm run test -w server",
+    "build:vercel": "npm run build -w web && npm run bundle -w server"
   },
-  "devDependencies": { "concurrently": "^9.0.1", "typescript": "^5.6.3" }
+  "devDependencies": {
+    "concurrently": "^9.0.1",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
 }

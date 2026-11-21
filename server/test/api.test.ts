@@ -20,7 +20,7 @@ async function signIn(email: string, name: string) {
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), "wjm-"));
-  app = await buildApp({ dbFile: join(dir, "t.sqlite"), uploadsDir: join(dir, "up"), appUrl: "http://app", sessionSecret: "x".repeat(32), showDevLink: true });
+  app = await buildApp({ db: process.env.TEST_DATABASE_URL ?? join(dir, "t.sqlite"), appUrl: "http://app", sessionSecret: "x".repeat(32), showDevLink: true });
 });
 afterAll(() => app.close());
 

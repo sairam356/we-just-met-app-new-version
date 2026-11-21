@@ -1,4 +1,7 @@
 node_modules
 dist
+server/data
 api/data
+.vercel
+server/dist
 .env
