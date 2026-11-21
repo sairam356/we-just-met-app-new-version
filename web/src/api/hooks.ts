@@ -40,7 +40,7 @@ export function useConnections(q: string, eventId: string | null) {
 export function useConnection(id: string, waitForPhoto = false) {
   return useQuery({
     queryKey: ["connection", id], queryFn: () => api<Connection>(`/connections/${id}`),
-    refetchInterval: (q) => (waitForPhoto && !q.state.data?.photoUrl ? 3000 : false),
+    refetchInterval: waitForPhoto ? 3000 : false,
   });
 }
 
@@ -64,7 +64,7 @@ export function useCreateEvent() {
   });
 }
 
-export async function uploadImage(kind: "avatar" | "connection" | "business_card", blob: Blob, connectionId?: string) {
+export async function uploadImage(kind: "avatar" | "connection" | "business_card" | "exchange", blob: Blob, connectionId?: string) {
   const dataBase64 = await new Promise<string>((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result).split(",")[1]);
@@ -73,4 +73,16 @@ export async function uploadImage(kind: "avatar" | "connection" | "business_card
   });
   const qs = connectionId ? `?connectionId=${connectionId}` : "";
   return api<{ key: string; url: string }>(`/uploads${qs}`, { method: "POST", body: { kind, contentType: "image/jpeg", dataBase64 } });
+}
+
+export async function uploadExchangePhoto(blob: Blob, token: string) {
+  const dataBase64 = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1]);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+  return api<{ key: string; url: string }>(`/uploads?token=${encodeURIComponent(token)}`, {
+    method: "POST", body: { kind: "exchange", contentType: "image/jpeg", dataBase64 },
+  });
 }

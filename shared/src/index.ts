@@ -38,7 +38,7 @@ export const User = z.object({
 export type User = z.infer<typeof User>;
 
 export const UploadBody = z.object({
-  kind: z.enum(["avatar", "connection", "business_card"]),
+  kind: z.enum(["avatar", "connection", "business_card", "exchange"]),
   contentType: z.enum(["image/jpeg", "image/webp"]),
   dataBase64: z.string().max(3_000_000),
 });
@@ -52,7 +52,10 @@ export type Event = z.infer<typeof Event>;
 export const TokenBody = z.object({ eventId: z.string().optional().nullable() });
 export const TokenResponse = z.object({ token: z.string(), url: z.string(), expiresAt: z.string() });
 export type TokenResponse = z.infer<typeof TokenResponse>;
-export type TokenStatus = { status: "waiting" } | { status: "redeemed"; connectionId: string } | { status: "expired" };
+export type TokenStatus =
+  | { status: "waiting" }
+  | { status: "redeemed"; connectionId: string; memoryPhotoIncluded: boolean }
+  | { status: "expired" };
 
 export const RedeemBody = z.object({
   token: z.string().min(10), lat: z.number().optional(), lng: z.number().optional(), eventId: z.string().optional().nullable(),
@@ -71,6 +74,7 @@ export type Connection = {
   photoUrl: string | null; photoKey: string | null; eventId: string | null; eventName: string | null;
   linkedinClickedAt: string | null; instagramClickedAt: string | null; contact: Contact;
 };
+export type ExchangeResult = Connection & { memoryPhotoIncluded: boolean };
 export type ConnectionList = { items: Connection[]; nextCursor: string | null };
 export type ApiError = { error: { code: string; message: string } };
 

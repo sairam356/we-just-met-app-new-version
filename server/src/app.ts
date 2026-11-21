@@ -24,7 +24,7 @@ class HttpError extends Error {
 }
 
 const COOKIE = "wjm_session";
-const KEY_RE = /^u\/[0-9a-f-]{36}\/(?:avatar|card|c\/[0-9a-f-]{36})\/[0-9a-f-]{36}\.(?:jpg|webp)$/;
+const KEY_RE = /^u\/[0-9a-f-]{36}\/(?:avatar|card|c\/[0-9a-f-]{36}|x\/[A-Za-z0-9_-]{22})\/[0-9a-f-]{36}\.(?:jpg|webp)$/;
 
 export async function buildApp(opts: AppOptions) {
   const db: DB = await openDb(opts.db);
@@ -183,10 +183,45 @@ export async function buildApp(opts: AppOptions) {
     const buf = Buffer.from(body.dataBase64, "base64");
     if (buf.length > 2 * 1024 * 1024) throw new HttpError(413, "too_large", "Image must be under 2 MB");
     const ext = body.contentType === "image/webp" ? "webp" : "jpg";
-    const folder = body.kind === "avatar" ? "avatar" : body.kind === "business_card" ? "card" : `c/${z.string().uuid().parse((req.query as any).connectionId)}`;
+    let folder: string;
+    if (body.kind === "avatar") folder = "avatar";
+    else if (body.kind === "business_card") folder = "card";
+    else if (body.kind === "connection") folder = `c/${z.string().uuid().parse((req.query as any).connectionId)}`;
+    else {
+      const token = z.string().length(22).parse((req.query as any).token);
+      const active = await db.get(`SELECT t.value FROM exchange_tokens t
+        JOIN active_exchange_tokens a ON a.token = t.token
+        WHERE t.token = ? AND a.owner_id = ? AND t.connection_id IS NULL AND t.expires_at >= ?`, token, uid, now());
+      if (!active) throw new HttpError(410, "token_expired", "This QR session has ended. Use the new QR.");
+      folder = `x/${token}`;
+    }
     const key = `u/${uid}/${folder}/${randomUUID()}.${ext}`;
-    await db.run("INSERT INTO files (key, owner_id, data, created_at) VALUES (?, ?, ?, ?)", key, uid, buf, now());
+    await db.tx(async (db) => {
+      await db.run("INSERT INTO files (key, owner_id, data, created_at) VALUES (?, ?, ?, ?)", key, uid, buf, now());
+      if (body.kind === "exchange") {
+        const token = (req.query as any).token as string;
+        const old = await db.get("SELECT photo_key FROM exchange_photos WHERE token = ?", token);
+        await db.run(`INSERT INTO exchange_photos (token, owner_id, photo_key) VALUES (?, ?, ?)
+          ON CONFLICT(token) DO UPDATE SET photo_key = excluded.photo_key`, token, uid, key);
+        if (old?.photo_key) await db.run("DELETE FROM files WHERE key = ?", old.photo_key);
+      }
+    });
     return { key, url: fileUrl(key) };
+  });
+
+  app.delete(`${P}/exchange/token/:token/photo`, async (req) => {
+    const uid = await requireUser(req);
+    const { token } = req.params as { token: string };
+    const old = await db.get(`SELECT p.photo_key FROM exchange_photos p
+      JOIN exchange_tokens t ON t.token = p.token
+      JOIN active_exchange_tokens a ON a.token = t.token
+      WHERE p.token = ? AND p.owner_id = ? AND a.owner_id = ? AND t.connection_id IS NULL AND t.expires_at >= ?`,
+      token, uid, uid, now());
+    if (old) await db.tx(async (db) => {
+      await db.run("DELETE FROM exchange_photos WHERE token = ? AND owner_id = ?", token, uid);
+      await db.run("DELETE FROM files WHERE key = ?", old.photo_key);
+    });
+    return { ok: true };
   });
 
   app.get(`${P}/files/*`, async (req, reply) => {
@@ -194,7 +229,7 @@ export async function buildApp(opts: AppOptions) {
     const key = (req.params as { "*": string })["*"];
     if (!KEY_RE.test(key)) throw new HttpError(404, "not_found", "Not found");
     // A photo taken together can be opened only by the two people on it.
-    if (key.includes("/c/") && !key.startsWith(`u/${uid}/`) && !(await db.get("SELECT 1 AS ok FROM connections WHERE owner_id = ? AND photo_key = ?", uid, key)))
+    if ((key.includes("/c/") || key.includes("/x/")) && !key.startsWith(`u/${uid}/`) && !(await db.get("SELECT 1 AS ok FROM connections WHERE owner_id = ? AND photo_key = ?", uid, key)))
       throw new HttpError(404, "not_found", "Not found");
     const row = await db.get("SELECT data FROM files WHERE key = ?", key);
     const legacy = opts.uploadsDir ? join(opts.uploadsDir, key) : null;
@@ -230,17 +265,33 @@ export async function buildApp(opts: AppOptions) {
       Object.assign(value, { eventId: ev.id, eventName: ev.name, placeLabel: ev.place_label, startsOn: ev.starts_on });
     }
     const token = randomBytes(17).toString("base64url").slice(0, 22);
-    const expiresAt = new Date(Date.now() + 300_000).toISOString();
-    await db.run("DELETE FROM exchange_tokens WHERE expires_at < ?", now());
-    await db.run("INSERT INTO exchange_tokens (token, value, expires_at) VALUES (?, ?, ?)", token, JSON.stringify(value), expiresAt);
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    await db.tx(async (db) => {
+      const expiredPhotos = await db.all(`SELECT p.photo_key FROM exchange_photos p
+        JOIN exchange_tokens t ON t.token = p.token WHERE t.expires_at < ? AND t.connection_id IS NULL`, now());
+      for (const photo of expiredPhotos) await db.run("DELETE FROM files WHERE key = ?", photo.photo_key);
+      await db.run("DELETE FROM exchange_tokens WHERE expires_at < ?", now());
+      const previous = await db.get(`SELECT t.token, t.connection_id, p.photo_key FROM active_exchange_tokens a
+        JOIN exchange_tokens t ON t.token = a.token LEFT JOIN exchange_photos p ON p.token = t.token
+        WHERE a.owner_id = ?`, uid);
+      if (previous) {
+        if (!previous.connection_id && previous.photo_key) await db.run("DELETE FROM files WHERE key = ?", previous.photo_key);
+        await db.run("DELETE FROM exchange_tokens WHERE token = ?", previous.token);
+      }
+      await db.run("INSERT INTO exchange_tokens (token, value, expires_at) VALUES (?, ?, ?)", token, JSON.stringify(value), expiresAt);
+      await db.run("INSERT INTO active_exchange_tokens (owner_id, token) VALUES (?, ?)", uid, token);
+    });
     return { token, url: `${origin(req)}/x/${token}`, expiresAt };
   });
 
   app.get(`${P}/exchange/token/:token/status`, async (req) => {
-    await requireUser(req);
+    const uid = await requireUser(req);
     const { token } = req.params as { token: string };
-    const row = await db.get("SELECT connection_id FROM exchange_tokens WHERE token = ? AND expires_at >= ?", token, now());
-    if (row?.connection_id) return { status: "redeemed", connectionId: row.connection_id };
+    const row = await db.get(`SELECT t.connection_id, p.photo_key FROM exchange_tokens t
+      JOIN active_exchange_tokens a ON a.token = t.token
+      LEFT JOIN exchange_photos p ON p.token = t.token
+      WHERE t.token = ? AND a.owner_id = ? AND t.expires_at >= ?`, token, uid, now());
+    if (row?.connection_id) return { status: "redeemed", connectionId: row.connection_id, memoryPhotoIncluded: !!row.photo_key };
     return row ? { status: "waiting" } : { status: "expired" };
   });
 
@@ -248,7 +299,9 @@ export async function buildApp(opts: AppOptions) {
     const scanner = await requireUser(req);
     const b = RedeemBody.parse(req.body);
     const expired = () => new HttpError(410, "token_expired", "This QR code has expired. Ask them to show a fresh one.");
-    const tokenRow = await db.get("SELECT value FROM exchange_tokens WHERE token = ? AND connection_id IS NULL AND expires_at >= ?", b.token, now());
+    const tokenRow = await db.get(`SELECT t.value, p.photo_key FROM exchange_tokens t
+      LEFT JOIN exchange_photos p ON p.token = t.token
+      WHERE t.token = ? AND t.connection_id IS NULL AND t.expires_at >= ?`, b.token, now());
     if (!tokenRow) throw expired();
     const t = JSON.parse(tokenRow.value) as XchgValue;
     if (t.userId === scanner) throw new HttpError(400, "self_exchange", "You can't exchange cards with yourself");
@@ -278,12 +331,13 @@ export async function buildApp(opts: AppOptions) {
         if (existing) {
           const stale = Date.now() - Date.parse(existing.met_at) > 24 * 3600_000;
           await db.run(`UPDATE connections SET met_at = ?, event_id = COALESCE(?, event_id), place_label = COALESCE(?, place_label),
-            lat = COALESCE(?, lat), lng = COALESCE(?, lng), archived_at = NULL, updated_at = ? WHERE id = ?`, stale ? ts : existing.met_at, eventId, place, b.lat ?? null, b.lng ?? null, ts, existing.id);
+            lat = COALESCE(?, lat), lng = COALESCE(?, lng), photo_key = COALESCE(?, photo_key),
+            archived_at = NULL, updated_at = ? WHERE id = ?`, stale ? ts : existing.met_at, eventId, place, b.lat ?? null, b.lng ?? null, tokenRow.photo_key ?? null, ts, existing.id);
           return existing.id as string;
         }
         const id = randomUUID();
-        await db.run(`INSERT INTO connections (id, owner_id, contact_id, event_id, met_at, lat, lng, place_label, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, ownerId, contactId, eventId, ts, b.lat ?? null, b.lng ?? null, place, ts, ts);
+        await db.run(`INSERT INTO connections (id, owner_id, contact_id, event_id, met_at, lat, lng, place_label, photo_key, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, ownerId, contactId, eventId, ts, b.lat ?? null, b.lng ?? null, place, tokenRow.photo_key ?? null, ts, ts);
         return id;
       };
       const ownerConn = await upsert(owner, scanner, t.eventId ?? null, t.placeLabel ?? detected);
@@ -291,7 +345,7 @@ export async function buildApp(opts: AppOptions) {
       await db.run("UPDATE exchange_tokens SET connection_id = ?, expires_at = ? WHERE token = ?", ownerConn, new Date(Date.now() + 600_000).toISOString(), b.token);
       return { scannerConn, scannerEvent };
     });
-    return { ...(await getConnection(scanner, scannerConn))!, eventId: scannerEvent?.id ?? null };
+    return { ...(await getConnection(scanner, scannerConn))!, eventId: scannerEvent?.id ?? null, memoryPhotoIncluded: !!tokenRow.photo_key };
   });
 
   // ---- connections ----

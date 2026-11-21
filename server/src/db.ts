@@ -46,6 +46,15 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS exchange_tokens (
     token TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at TEXT NOT NULL, connection_id TEXT
   );
+  CREATE TABLE IF NOT EXISTS active_exchange_tokens (
+    owner_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE REFERENCES exchange_tokens(token) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS exchange_photos (
+    token TEXT PRIMARY KEY REFERENCES exchange_tokens(token) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    photo_key TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS files (
     key TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     data BLOB NOT NULL, created_at TEXT NOT NULL

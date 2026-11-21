@@ -13,7 +13,8 @@ export default function ConnectionDetail() {
   const { id = "" } = useParams();
   const [params] = useSearchParams();
   const isNew = !!params.get("new");
-  const conn = useConnection(id, isNew);
+  const shouldPromptForPhoto = isNew && params.get("memory") === "prompt";
+  const conn = useConnection(id, shouldPromptForPhoto);
   const events = useEvents();
   const update = useUpdateConnection(id);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -21,8 +22,14 @@ export default function ConnectionDetail() {
   const [place, setPlace] = useState("");
   const [saved, setSaved] = useState(false);
   const [skipped, setSkipped] = useState(false);
+  const initialPhotoKey = useRef<string | null | undefined>(undefined);
 
   useEffect(() => { if (conn.data) { setNote(conn.data.note ?? ""); setPlace(conn.data.placeLabel ?? ""); } }, [conn.data?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!conn.data || !shouldPromptForPhoto) return;
+    if (initialPhotoKey.current === undefined) initialPhotoKey.current = conn.data.photoKey;
+    else if (conn.data.photoKey !== initialPhotoKey.current) setSkipped(true);
+  }, [conn.data?.photoKey, shouldPromptForPhoto]);
 
   if (conn.isLoading) return <Spinner />;
   if (!conn.data) return <div className="card"><ErrorText error={conn.error} /><Link to="/" className="btn-secondary mt-3">Back</Link></div>;
@@ -35,16 +42,20 @@ export default function ConnectionDetail() {
     a.href = url; a.download = `${c.contact.name || "card"}.png`; a.click();
   };
 
-  const savePhoto = async (b: Blob) => { const { key } = await uploadImage("connection", b, c.id); await update.mutateAsync({ photoKey: key }); };
+  const savePhoto = async (b: Blob) => {
+    const { key } = await uploadImage("connection", b, c.id);
+    await update.mutateAsync({ photoKey: key });
+    setSkipped(true);
+  };
 
-  if (isNew && !skipped && !c.photoUrl) {
+  if (shouldPromptForPhoto && !skipped) {
     return (
       <div className="card mt-6 space-y-3 text-center" data-testid="photo-step">
         <div className="mx-auto h-20 w-20 overflow-hidden rounded-full bg-indigo-100">
           {c.contact.avatarUrl && <img src={c.contact.avatarUrl} alt="" className="h-full w-full object-cover" />}
         </div>
         <h1 className="text-xl font-bold">You just met {c.contact.name || "someone"}!</h1>
-        <p className="text-sm text-slate-600">Take a photo together so you both recognise each other later. One photo is enough: it is saved on both of your cards.</p>
+        <p className="text-sm text-slate-600">No memory photo was added before the scan. You can take one together now, or skip. It is separate from your profile photos and saved on both contact cards.</p>
         <ImagePicker label="🤳 Take a photo together" capture="user" testId="together-input" className="btn-primary w-full" onPicked={savePhoto} />
         <ImagePicker label="Use the back camera" capture="environment" className="btn-secondary w-full" onPicked={savePhoto} />
         <ErrorText error={update.error} />

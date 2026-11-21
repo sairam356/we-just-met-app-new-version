@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { Connection } from "@wjm/shared";
+import type { ExchangeResult } from "@wjm/shared";
 import { api } from "../api/client";
 import { Spinner } from "../components/Layout";
 import { getActiveEventId, setActiveEventId } from "../lib/activeEvent";
@@ -22,9 +22,9 @@ export default function Redeem() {
     (async () => {
       try {
         const pos = await getPosition();
-        const c = await api<Connection>("/exchange/redeem", { method: "POST", body: { token, ...pos, eventId: getActiveEventId() } });
+        const c = await api<ExchangeResult>("/exchange/redeem", { method: "POST", body: { token, ...pos, eventId: getActiveEventId() } });
         if (c.eventId) setActiveEventId(c.eventId);
-        nav(`/c/${c.id}?new=1`, { replace: true });
+        nav(`/c/${c.id}?new=1&memory=${c.memoryPhotoIncluded ? "added" : "prompt"}`, { replace: true });
       } catch (e) { setErr(e instanceof Error ? e.message : "Something went wrong"); }
     })();
   }, [token, nav]);

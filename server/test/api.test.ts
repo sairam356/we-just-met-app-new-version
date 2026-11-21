@@ -83,6 +83,7 @@ describe("flows", () => {
     const tok2 = (await app.inject({ method: "POST", url: "/api/v1/exchange/token", headers: c, payload: {} })).json();
     const ev2 = (await app.inject({ method: "POST", url: "/api/v1/events", headers: c, payload: { name: " demo summit " } })).json();
     const tok3 = (await app.inject({ method: "POST", url: "/api/v1/exchange/token", headers: c, payload: { eventId: ev2.id } })).json();
+    expect((await app.inject({ method: "POST", url: "/api/v1/exchange/redeem", headers: b, payload: { token: tok2.token } })).statusCode).toBe(410);
     await app.inject({ method: "POST", url: "/api/v1/exchange/redeem", headers: b, payload: { token: tok3.token } });
     const bEvents = (await app.inject({ url: "/api/v1/events", headers: b })).json();
     expect(bEvents).toHaveLength(1);
@@ -127,5 +128,32 @@ describe("flows", () => {
     await app.inject({ method: "PATCH", url: `/api/v1/connections/${aId}`, headers: a, payload: { photoKey: null } });
     expect((await app.inject({ url: `/api/v1/connections/${bConn.id}`, headers: b })).json().photoKey).toBe(up.key);
     expect((await app.inject({ url: up.url, headers: a })).statusCode).toBe(404);
+  });
+
+  it("binds an owner's memory photo to one QR session and shares it on both cards", async () => {
+    const a = await signIn("session-photo-a@x.com", "Uma");
+    const b = await signIn("session-photo-b@x.com", "Vic");
+    const c = await signIn("session-photo-c@x.com", "Wes");
+    const tok = (await app.inject({ method: "POST", url: "/api/v1/exchange/token", headers: a, payload: {} })).json();
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 7, 8, 9]);
+    const up = (await app.inject({
+      method: "POST", url: `/api/v1/uploads?token=${tok.token}`, headers: a,
+      payload: { kind: "exchange", contentType: "image/jpeg", dataBase64: bytes.toString("base64") },
+    })).json();
+    expect(up.url).toContain(`/x/${tok.token}/`);
+    const redeemed = (await app.inject({
+      method: "POST", url: "/api/v1/exchange/redeem", headers: b, payload: { token: tok.token },
+    })).json();
+    expect(redeemed.memoryPhotoIncluded).toBe(true);
+    expect(redeemed.photoKey).toBe(up.key);
+    const status = (await app.inject({ url: `/api/v1/exchange/token/${tok.token}/status`, headers: a })).json();
+    expect(status.memoryPhotoIncluded).toBe(true);
+    const ownerConnection = (await app.inject({ url: `/api/v1/connections/${status.connectionId}`, headers: a })).json();
+    expect(ownerConnection.photoKey).toBe(up.key);
+    expect((await app.inject({ url: up.url, headers: c })).statusCode).toBe(404);
+
+    const next = (await app.inject({ method: "POST", url: "/api/v1/exchange/token", headers: a, payload: {} })).json();
+    expect(next.token).not.toBe(tok.token);
+    expect((await app.inject({ method: "POST", url: "/api/v1/exchange/redeem", headers: c, payload: { token: tok.token } })).statusCode).toBe(410);
   });
 });

@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import type { TokenResponse, TokenStatus } from "@wjm/shared";
 import { api } from "../api/client";
-import { useEvents } from "../api/hooks";
+import { uploadExchangePhoto, useEvents } from "../api/hooks";
 import { EventPicker, NewEventForm } from "../components/EventPicker";
+import { ImagePicker } from "../components/ImagePicker";
 import { ErrorText, Spinner } from "../components/Layout";
 import { getActiveEventId, setActiveEventId } from "../lib/activeEvent";
 
@@ -19,6 +20,8 @@ export default function MyQR() {
   const [changing, setChanging] = useState(false);
   const [visible, setVisible] = useState(!document.hidden);
   const [now, setNow] = useState(Date.now());
+  const [memoryPhotoUrl, setMemoryPhotoUrl] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<unknown>(null);
 
   useEffect(() => { const f = () => setVisible(!document.hidden); document.addEventListener("visibilitychange", f); return () => document.removeEventListener("visibilitychange", f); }, []);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
@@ -33,7 +36,8 @@ export default function MyQR() {
   const expiresAt = token.data ? Date.parse(token.data.expiresAt) : 0;
   const secondsLeft = Math.max(0, Math.round((expiresAt - now) / 1000));
 
-  useEffect(() => { if (token.data && secondsLeft <= 30 && !token.isFetching) token.refetch(); }, [token, secondsLeft]);
+  useEffect(() => { if (token.data && secondsLeft <= 0 && !token.isFetching) token.refetch(); }, [token, secondsLeft]);
+  useEffect(() => { setMemoryPhotoUrl(null); setPhotoError(null); }, [token.data?.token]);
 
   const status = useQuery({
     queryKey: ["xchg-status", token.data?.token],
@@ -41,7 +45,10 @@ export default function MyQR() {
     enabled: !!token.data && visible && secondsLeft > 0,
     refetchInterval: 2000,
   });
-  useEffect(() => { if (status.data?.status === "redeemed") nav(`/c/${status.data.connectionId}?new=1`); }, [status.data, nav]);
+  useEffect(() => {
+    if (status.data?.status === "redeemed")
+      nav(`/c/${status.data.connectionId}?new=1&memory=${status.data.memoryPhotoIncluded ? "added" : "prompt"}`);
+  }, [status.data, nav]);
 
   const selectEvent = (id: string | null) => { setEventId(id); setActiveEventId(id); setChanging(false); };
   const skip = () => { sessionStorage.setItem(ASKED_KEY, String(Date.now())); setAsking(false); };
@@ -90,7 +97,28 @@ export default function MyQR() {
               <QRCodeSVG value={shareUrl} size={280} level="M" />
             </div>
             <p className="mt-3 text-sm text-slate-600">Ask them to scan this with their phone camera</p>
-            <p className="text-xs text-slate-400">Refreshes in {Math.max(0, secondsLeft - 30)}s</p>
+            <p className="text-xs text-slate-400">This one-use QR expires in {secondsLeft}s</p>
+            <div className="mt-3 w-full rounded-xl border border-indigo-100 bg-indigo-50 p-3">
+              <div className="text-sm font-semibold">Optional memory photo</div>
+              <p className="mb-2 text-xs text-slate-600">Take a photo together before they scan. It goes only to the person who uses this QR.</p>
+              {memoryPhotoUrl && <img src={memoryPhotoUrl} alt="Memory for this QR session" className="mb-2 w-full rounded-lg object-cover" style={{ maxHeight: 260 }} data-testid="session-photo" />}
+              <ImagePicker
+                label={memoryPhotoUrl ? "Retake memory photo" : "🤳 Take memory photo"}
+                capture="user"
+                testId="session-photo-input"
+                className="btn-primary w-full"
+                onPicked={async (b) => {
+                  setPhotoError(null);
+                  try { setMemoryPhotoUrl((await uploadExchangePhoto(b, token.data!.token)).url); }
+                  catch (e) { setPhotoError(e); }
+                }}
+              />
+              {memoryPhotoUrl && <button className="mt-2 w-full text-sm text-slate-500" data-testid="remove-session-photo" onClick={async () => {
+                await api(`/exchange/token/${token.data!.token}/photo`, { method: "DELETE" });
+                setMemoryPhotoUrl(null);
+              }}>Remove memory photo</button>}
+              <ErrorText error={photoError} />
+            </div>
             <button className="btn-secondary mt-2" disabled={token.isFetching} onClick={() => token.refetch()} data-testid="new-code">{token.isFetching ? "Getting a new code…" : "New code"}</button>
             <div className="mt-3 flex w-full gap-2">
               <button className="btn-secondary flex-1" onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy link</button>
