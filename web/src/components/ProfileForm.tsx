@@ -24,8 +24,9 @@ export function ProfileForm({ me, submitLabel, onSaved }: { me: User; submitLabe
   const designWithAi = async () => {
     setDesigning(true); setAiError(null);
     try {
+      const saved = await update.mutateAsync(form as ProfilePatch);
       const design = await api<CardDesign>("/me/card-design", { method: "POST" });
-      const { key } = await uploadImage("business_card", await drawCard(design, me));
+      const { key } = await uploadImage("business_card", await drawCard(design, saved));
       await update.mutateAsync({ businessCardKey: key });
     } catch (e) { setAiError(e); } finally { setDesigning(false); }
   };
@@ -67,10 +68,10 @@ export function ProfileForm({ me, submitLabel, onSaved }: { me: User; submitLabe
           <ImagePicker label={me.businessCardUrl ? "Replace card" : "Add your business card"} onPicked={async (b) => { const { key } = await uploadImage("business_card", b); await update.mutateAsync({ businessCardKey: key }); }} />
           {me.businessCardUrl && <button type="button" className="btn-secondary" onClick={() => update.mutate({ businessCardKey: null })}>Remove</button>}
         </div>
-        <button type="button" className="btn-secondary mt-2 w-full" disabled={designing || !me.name} onClick={designWithAi} data-testid="ai-card">
+        <button type="button" className="btn-secondary mt-2 w-full" disabled={designing || !form.name?.trim()} onClick={designWithAi} data-testid="ai-card">
           {designing ? "Designing…" : me.businessCardUrl ? "Design a new card with AI" : "Design my card with AI"}
         </button>
-        <p className="mt-1 text-xs text-slate-500">Uses your saved profile. Save changes first.</p>
+        <p className="mt-1 text-xs text-slate-500">Saves your details above, then designs a card from them.</p>
         <ErrorText error={aiError} />
       </div>
       <ErrorText error={update.error} />
