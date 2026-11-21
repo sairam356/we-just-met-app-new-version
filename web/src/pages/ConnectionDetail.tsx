@@ -12,13 +12,15 @@ import { downloadVCard } from "../lib/vcard";
 export default function ConnectionDetail() {
   const { id = "" } = useParams();
   const [params] = useSearchParams();
-  const conn = useConnection(id);
+  const isNew = !!params.get("new");
+  const conn = useConnection(id, isNew);
   const events = useEvents();
   const update = useUpdateConnection(id);
   const cardRef = useRef<HTMLDivElement>(null);
   const [note, setNote] = useState("");
   const [place, setPlace] = useState("");
   const [saved, setSaved] = useState(false);
+  const [skipped, setSkipped] = useState(false);
 
   useEffect(() => { if (conn.data) { setNote(conn.data.note ?? ""); setPlace(conn.data.placeLabel ?? ""); } }, [conn.data?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -33,15 +35,34 @@ export default function ConnectionDetail() {
     a.href = url; a.download = `${c.contact.name || "card"}.png`; a.click();
   };
 
+  const savePhoto = async (b: Blob) => { const { key } = await uploadImage("connection", b, c.id); await update.mutateAsync({ photoKey: key }); };
+
+  if (isNew && !skipped && !c.photoUrl) {
+    return (
+      <div className="card mt-6 space-y-3 text-center" data-testid="photo-step">
+        <div className="mx-auto h-20 w-20 overflow-hidden rounded-full bg-indigo-100">
+          {c.contact.avatarUrl && <img src={c.contact.avatarUrl} alt="" className="h-full w-full object-cover" />}
+        </div>
+        <h1 className="text-xl font-bold">You just met {c.contact.name || "someone"}!</h1>
+        <p className="text-sm text-slate-600">Take a photo together so you both recognise each other later. One photo is enough: it is saved on both of your cards.</p>
+        <ImagePicker label="🤳 Take a photo together" capture="user" testId="together-input" className="btn-primary w-full" onPicked={savePhoto} />
+        <ImagePicker label="Use the back camera" capture="environment" className="btn-secondary w-full" onPicked={savePhoto} />
+        <ErrorText error={update.error} />
+        <button className="w-full text-sm text-slate-500" onClick={() => setSkipped(true)} data-testid="skip-photo">Skip for now</button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <Link to="/" className="text-sm text-indigo-600">← Contacts</Link>
-      {params.get("new") && <div className="rounded-lg bg-green-50 p-3 text-sm text-green-800">You just met {c.contact.name || "someone"}! Add a photo and a note so you remember them.</div>}
+      {isNew && <div className="rounded-lg bg-green-50 p-3 text-sm text-green-800">You just met {c.contact.name || "someone"}! {c.photoUrl ? "Your photo together is on both of your cards." : "Add a photo and a note so you remember them."}</div>}
       <ContactCard ref={cardRef} contact={c.contact} photoUrl={c.photoUrl} eventName={c.eventName} placeLabel={c.placeLabel} metAt={c.metAt} connectionId={c.id} linkedinClickedAt={c.linkedinClickedAt} instagramClickedAt={c.instagramClickedAt} size="full" />
       <div className="grid grid-cols-2 gap-2">
-        <ImagePicker label={c.photoUrl ? "Replace photo" : "📷 Add photo"} testId="photo-input" className="btn-primary" onPicked={async (b) => { const { key } = await uploadImage("connection", b, c.id); await update.mutateAsync({ photoKey: key }); }} />
+        <ImagePicker label={c.photoUrl ? "Replace photo" : "📷 Add photo"} capture="user" testId="photo-input" className="btn-primary" onPicked={savePhoto} />
         <button className="btn-secondary" onClick={() => downloadVCard(c.contact, c.note)}>Save to contacts</button>
         <button className="btn-secondary col-span-2" onClick={saveCardImage}>Save card as image</button>
+        {c.photoUrl && <button className="col-span-2 text-sm text-slate-500" onClick={() => update.mutate({ photoKey: null })} data-testid="remove-photo">Remove photo from my card</button>}
       </div>
 
       <form className="card space-y-3" onSubmit={async (e) => { e.preventDefault(); setSaved(false); await update.mutateAsync({ note, placeLabel: place }); setSaved(true); }}>

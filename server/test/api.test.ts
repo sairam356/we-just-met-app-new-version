@@ -109,4 +109,23 @@ describe("flows", () => {
     expect((await app.inject({ url: "/api/v1/geo/reverse?lat=25.2&lng=55.3", headers: a })).json().placeLabel).toBe("Detected Place");
     expect((await app.inject({ method: "POST", url: "/api/v1/me/card-design", headers: a })).json().accent).toBe("#ffcc00");
   });
+  it("a photo taken together goes on both cards and only those two can open it", async () => {
+    const a = await signIn("ph-a@x.com", "Pia");
+    const b = await signIn("ph-b@x.com", "Raj");
+    const c = await signIn("ph-c@x.com", "Sam");
+    const tok = (await app.inject({ method: "POST", url: "/api/v1/exchange/token", headers: a, payload: {} })).json();
+    const bConn = (await app.inject({ method: "POST", url: "/api/v1/exchange/redeem", headers: b, payload: { token: tok.token } })).json();
+    const aId = (await app.inject({ url: `/api/v1/exchange/token/${tok.token}/status`, headers: a })).json().connectionId;
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 1, 2, 3]);
+    const up = (await app.inject({ method: "POST", url: `/api/v1/uploads?connectionId=${bConn.id}`, headers: b, payload: { kind: "connection", contentType: "image/jpeg", dataBase64: bytes.toString("base64") } })).json();
+    await app.inject({ method: "PATCH", url: `/api/v1/connections/${bConn.id}`, headers: b, payload: { photoKey: up.key } });
+    const aConn = (await app.inject({ url: `/api/v1/connections/${aId}`, headers: a })).json();
+    expect(aConn.photoKey).toBe(up.key);
+    expect(Buffer.compare((await app.inject({ url: aConn.photoUrl, headers: a })).rawPayload, bytes)).toBe(0);
+    expect((await app.inject({ url: aConn.photoUrl, headers: c })).statusCode).toBe(404);
+    // removing it from one card leaves the other
+    await app.inject({ method: "PATCH", url: `/api/v1/connections/${aId}`, headers: a, payload: { photoKey: null } });
+    expect((await app.inject({ url: `/api/v1/connections/${bConn.id}`, headers: b })).json().photoKey).toBe(up.key);
+    expect((await app.inject({ url: up.url, headers: a })).statusCode).toBe(404);
+  });
 });

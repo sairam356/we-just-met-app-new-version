@@ -190,9 +190,12 @@ export async function buildApp(opts: AppOptions) {
   });
 
   app.get(`${P}/files/*`, async (req, reply) => {
-    await requireUser(req);
+    const uid = await requireUser(req);
     const key = (req.params as { "*": string })["*"];
     if (!KEY_RE.test(key)) throw new HttpError(404, "not_found", "Not found");
+    // A photo taken together can be opened only by the two people on it.
+    if (key.includes("/c/") && !key.startsWith(`u/${uid}/`) && !(await db.get("SELECT 1 AS ok FROM connections WHERE owner_id = ? AND photo_key = ?", uid, key)))
+      throw new HttpError(404, "not_found", "Not found");
     const row = await db.get("SELECT data FROM files WHERE key = ?", key);
     const legacy = opts.uploadsDir ? join(opts.uploadsDir, key) : null;
     if (!row && !(legacy && existsSync(legacy))) throw new HttpError(404, "not_found", "Not found");
@@ -361,6 +364,8 @@ export async function buildApp(opts: AppOptions) {
     if (b.archived !== undefined) set.archived_at = b.archived ? now() : null;
     const cols = Object.keys(set);
     if (cols.length) await db.run(`UPDATE connections SET ${cols.map((c) => `${c} = ?`).join(", ")}, updated_at = ? WHERE id = ?`, ...Object.values(set), now(), id);
+    // A new photo is shared: it also goes on the other person's card. Removing it only affects your own.
+    if (b.photoKey) await db.run("UPDATE connections SET photo_key = ?, updated_at = ? WHERE owner_id = (SELECT contact_id FROM connections WHERE id = ?) AND contact_id = ?", b.photoKey, now(), id, uid);
     return getConnection(uid, id);
   });
 

@@ -91,6 +91,7 @@ export default function MyQR() {
             </div>
             <p className="mt-3 text-sm text-slate-600">Ask them to scan this with their phone camera</p>
             <p className="text-xs text-slate-400">Refreshes in {Math.max(0, secondsLeft - 30)}s</p>
+            <button className="btn-secondary mt-2" disabled={token.isFetching} onClick={() => token.refetch()} data-testid="new-code">{token.isFetching ? "Getting a new code…" : "New code"}</button>
             <div className="mt-3 flex w-full gap-2">
               <button className="btn-secondary flex-1" onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy link</button>
               {navigator.share && <button className="btn-secondary flex-1" onClick={() => navigator.share({ title: "We Just Met", url: shareUrl }).catch(() => {})}>Share link</button>}

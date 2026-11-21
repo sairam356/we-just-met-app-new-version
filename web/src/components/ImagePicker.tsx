@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { compressImage } from "../lib/image";
 
-type Props = { label: string; onPicked: (blob: Blob) => Promise<void>; className?: string; testId?: string };
+type Props = { label: string; onPicked: (blob: Blob) => Promise<void>; className?: string; testId?: string; capture?: "user" | "environment" };
 
-export function ImagePicker({ label, onPicked, className, testId }: Props) {
+export function ImagePicker({ label, onPicked, className, testId, capture = "environment" }: Props) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -13,7 +13,7 @@ export function ImagePicker({ label, onPicked, className, testId }: Props) {
         {busy ? "Uploading…" : label}
       </button>
       <input
-        ref={ref} type="file" accept="image/*" capture="environment" className="hidden" data-testid={testId}
+        ref={ref} type="file" accept="image/*" capture={capture} className="hidden" data-testid={testId}
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = "";

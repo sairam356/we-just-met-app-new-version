@@ -37,8 +37,11 @@ export function useConnections(q: string, eventId: string | null) {
   });
 }
 
-export function useConnection(id: string) {
-  return useQuery({ queryKey: ["connection", id], queryFn: () => api<Connection>(`/connections/${id}`) });
+export function useConnection(id: string, waitForPhoto = false) {
+  return useQuery({
+    queryKey: ["connection", id], queryFn: () => api<Connection>(`/connections/${id}`),
+    refetchInterval: (q) => (waitForPhoto && !q.state.data?.photoUrl ? 3000 : false),
+  });
 }
 
 export function useUpdateConnection(id: string) {
