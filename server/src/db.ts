@@ -97,13 +97,17 @@ async function openPostgres(url: string): Promise<DB> {
       c.release();
     }
   });
-  // The lock stops two cold starts from creating the tables at the same time.
+  // The lock stops two cold starts from creating the tables at the same time. It is transaction-scoped so it also works through a connection pooler.
   const c = await pool.connect();
   try {
-    await c.query("SELECT pg_advisory_lock(746101)");
+    await c.query("BEGIN");
+    await c.query("SELECT pg_advisory_xact_lock(746101)");
     await c.query(SCHEMA.replace(/\bREAL\b/g, "DOUBLE PRECISION").replace(/\bBLOB\b/g, "BYTEA"));
+    await c.query("COMMIT");
+  } catch (e) {
+    await c.query("ROLLBACK").catch(() => {});
+    throw e;
   } finally {
-    await c.query("SELECT pg_advisory_unlock(746101)").catch(() => {});
     c.release();
   }
   return db;
